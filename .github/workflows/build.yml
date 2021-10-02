@@ -1,0 +1,48 @@
+name: Build & deploy
+on:
+  push:
+    branches: 
+      - master
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Create SSH key
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SSH_PRIVATE_KEY" > ../private.key
+          chmod 0600 ../private.key
+          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600  ~/.ssh/known_hosts
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY_PATH: ${{ github.workspace }}/../private.key
+      - name: Build and deploy
+        env:
+          SSH_KEY_PATH: ${{ github.workspace }}/../private.key
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install xvfb curl
+          curl -L https://github.com/bjorn/tiled/releases/download/v1.4.2/Tiled-1.4.2-x86_64.AppImage > "$HOME/tiled"
+          chmod +x "$HOME/tiled"
+          xvfb-run "$HOME/tiled" --version
+          ./scripts/build.sh
+      - run: |
+          mkdir bin
+          cp ${GITHUB_WORKSPACE}/*.json ./bin/
+          cp ${GITHUB_WORKSPACE}/*.mp3 ./bin/
+          rsync -Pav --files-from=images_to_sync . ./bin/
+      - name: Push to the built repo
+        uses: cpina/github-action-push-to-another-repository@master
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.DEPLOY_TOKEN }}
+        with:
+          source-directory: 'bin'
+          destination-github-username: 'milliways-bot'
+          destination-repository-username: 'hackers-of-milliways'
+          destination-repository-name: 'milliways-station-built'
+          user-email: 'github@elmarlecher.de'
+          target-branch: 'main'
